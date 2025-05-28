@@ -20,6 +20,7 @@ VERBOSE = "--verbose" in sys.argv
 
 LOG_FILE = Path("netlog.jsonl")
 sampleCount = 0
+lastSampleTime = None
 NORMAL_INTERVAL = 60
 BOOSTED_INTERVAL = 15
 BOOSTED_DURATION = datetime.timedelta(minutes=5)
@@ -123,34 +124,28 @@ def WriteToLog(entry):
 
 
 def RunTrackerLoop():
-    """
-    Main loop: collect and log data and display live dashboard.
-    """
+    """Main loop: collect and log data and display live dashboard."""
     global boostEnd
     global sampleCount
-    placeholderTable = Table(show_header=True, header_style="bold magenta")
-    placeholderTable.add_column("Metric")
-    placeholderTable.add_column("Value")
-    for label in [
-        "Time",
-        "VPN",
-        "Ping (ms)",
-        "Loss (%)",
-        "Down",
-        "Up",
-        "Wi-Fi",
-        "Fails",
-        "Samples",
-    ]:
-        placeholderTable.add_row(label, "N/A")
+    global lastSampleTime
+
+    placeholder = Table.grid(padding=(0, 1))
+    placeholder.add_column(justify="center")
+    placeholder.add_row("[bold cyan]Initializing network diagnostics...[/bold cyan]")
+    placeholder.add_row("[dim]Waiting for first data sample[/dim]")
+    placeholder.add_row("[blue]⌛ Please wait...[/blue]")
 
     with Live(
-        Panel(placeholderTable, title="Internet Status Monitor  •  loading..."),
+        Panel(placeholder, title="Internet Status Monitor"),
         console=console,
         refresh_per_second=4,
     ) as live:
         while True:
             now = datetime.datetime.now()
+            elapsedStr = (
+                "–" if not lastSampleTime else f"{(now - lastSampleTime).seconds}s"
+            )
+            lastSampleTime = now
             nowIso = now.isoformat()
             vpnStatus = CheckVpnStatus()
             pingMs, packetLoss = PingTest()
@@ -174,39 +169,43 @@ def RunTrackerLoop():
             if VERBOSE:
                 console.print(entry)
 
-            table = Table(show_header=True, header_style="bold magenta")
-            table.add_column("Metric")
-            table.add_column("Value")
-            table.add_row("Time", now.strftime("%H:%M:%S"))
-            table.add_row("VPN", vpnStatus)
-            table.add_row("Ping (ms)", f"{pingMs:.1f}")
-            table.add_row("Loss (%)", f"{packetLoss:.1f}")
-            table.add_row("Down", f"{download:.1f} Mbps")
-            table.add_row("Up", f"{upload:.1f} Mbps")
-            if wifiSignal:
-                if wifiSignal > -60:
-                    signalStr = f"[green]{wifiSignal} dBm[/green]"
-                elif wifiSignal > -75:
-                    signalStr = f"[yellow]{wifiSignal} dBm[/yellow]"
-                else:
-                    signalStr = f"[red]{wifiSignal} dBm[/red]"
-            else:
+            table = Table.grid(expand=True)
+            table.add_column(justify="right", style="bold magenta", ratio=1)
+            table.add_column(justify="left", style="bold", ratio=3)
+            table.add_row("Time", f"[white]{now.strftime('%H:%M:%S')}[/white]")
+            vpnStr = "[green]ON[/green]" if vpnStatus == "ON" else "[red]OFF[/red]"
+            table.add_row("VPN", vpnStr)
+            table.add_row("Ping (ms)", f"[cyan]{pingMs:.1f}[/cyan]")
+            table.add_row("Loss (%)", f"[yellow]{packetLoss:.1f}[/yellow]")
+            table.add_row("Down", f"[blue]{download:.1f} Mbps[/blue]")
+            table.add_row("Up", f"[blue]{upload:.1f} Mbps[/blue]")
+
+            if wifiSignal is None:
                 signalStr = "N/A"
+            elif wifiSignal > -60:
+                signalStr = f"[green]{wifiSignal} dBm[/green]"
+            elif wifiSignal > -75:
+                signalStr = f"[yellow]{wifiSignal} dBm[/yellow]"
+            else:
+                signalStr = f"[red]{wifiSignal} dBm[/red]"
             table.add_row("Wi-Fi", signalStr)
-            failMsg = ", ".join(failedSites) if failedSites else "None"
-            failColor = "bold red" if failedSites else "green"
-            table.add_row("Fails", f"[{failColor}]{failMsg}[/{failColor}]")
-            table.add_row("Samples", str(sampleCount))
+
+            if failedSites:
+                failsFormatted = "\n".join(
+                    f"[red]- {url.replace('https://', '')}[/red]" for url in failedSites
+                )
+            else:
+                failsFormatted = "[green]None[/green]"
+            table.add_row("Fails", failsFormatted)
 
             countdown = interval
-
             while countdown:
-                live.update(
-                    Panel(
-                        table,
-                        title=f"Internet Status Monitor  •  next check in {countdown}s",
-                    )
+                title = (
+                    f"[b bright_white]Internet Status Monitor[/b bright_white]  "
+                    f"[dim](next in {countdown}s, +{elapsedStr})[/dim]  "
+                    f"[green]#{sampleCount}[/green]"
                 )
+                live.update(Panel(table, title=title))
                 time.sleep(1)
                 countdown -= 1
 
