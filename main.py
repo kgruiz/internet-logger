@@ -128,9 +128,24 @@ def RunTrackerLoop():
     """
     global boostEnd
     global sampleCount
-    spinner = Spinner("dots", text="Fetching data...")
+    placeholderTable = Table(show_header=True, header_style="bold magenta")
+    placeholderTable.add_column("Metric")
+    placeholderTable.add_column("Value")
+    for label in [
+        "Time",
+        "VPN",
+        "Ping (ms)",
+        "Loss (%)",
+        "Down",
+        "Up",
+        "Wi-Fi",
+        "Fails",
+        "Samples",
+    ]:
+        placeholderTable.add_row(label, "N/A")
+
     with Live(
-        Panel(spinner, title="Internet Status Monitor  •  loading..."),
+        Panel(placeholderTable, title="Internet Status Monitor  •  loading..."),
         console=console,
         refresh_per_second=4,
     ) as live:
@@ -168,8 +183,19 @@ def RunTrackerLoop():
             table.add_row("Loss (%)", f"{packetLoss:.1f}")
             table.add_row("Down", f"{download:.1f} Mbps")
             table.add_row("Up", f"{upload:.1f} Mbps")
-            table.add_row("Wi-Fi", f"{wifiSignal} dBm" if wifiSignal else "N/A")
-            table.add_row("Fails", ", ".join(failedSites) or "None")
+            if wifiSignal:
+                if wifiSignal > -60:
+                    signalStr = f"[green]{wifiSignal} dBm[/green]"
+                elif wifiSignal > -75:
+                    signalStr = f"[yellow]{wifiSignal} dBm[/yellow]"
+                else:
+                    signalStr = f"[red]{wifiSignal} dBm[/red]"
+            else:
+                signalStr = "N/A"
+            table.add_row("Wi-Fi", signalStr)
+            failMsg = ", ".join(failedSites) if failedSites else "None"
+            failColor = "bold red" if failedSites else "green"
+            table.add_row("Fails", f"[{failColor}]{failMsg}[/{failColor}]")
             table.add_row("Samples", str(sampleCount))
 
             countdown = interval
