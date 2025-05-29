@@ -13,8 +13,8 @@ import requests
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
-from rich.table import Table
 from rich.spinner import Spinner
+from rich.table import Table
 
 VERBOSE = "--verbose" in sys.argv
 
@@ -205,8 +205,10 @@ def RunTrackerLoop():
             )
 
             now = datetime.datetime.now()
-            timeSinceLast = 0 if lastSampleTime is None else int(
-                (now - lastSampleTime).total_seconds()
+            timeSinceLast = (
+                0
+                if lastSampleTime is None
+                else int((now - lastSampleTime).total_seconds())
             )
             lastSampleTime = now
             nowIso = now.isoformat()
@@ -295,10 +297,10 @@ def ManualMarkerLoop():
         termios.tcsetattr(fd, termios.TCSADRAIN, origSettings)
 
 
-def Main():
+def main():
     threading.Thread(target=ManualMarkerLoop, daemon=True).start()
     RunTrackerLoop()
 
 
 if __name__ == "__main__":
-    Main()
+    main()
