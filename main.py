@@ -8,6 +8,7 @@ import threading
 import time
 import tty
 from collections import deque
+from typing import Deque, Tuple
 from pathlib import Path
 
 import requests
@@ -32,7 +33,7 @@ boostEndTime = datetime.datetime.now()
 sampleCount = 0
 lastSampleTime = None
 durationList = []
-marksDeque = deque(maxlen=5)
+marksDeque: Deque[Tuple[str, str]] = deque(maxlen=5)
 totalMarksCount = 0
 
 
@@ -122,135 +123,124 @@ def RenderDashboard(
     upload: float,
     wifiSignal: int | None,
     failedSites: list[str],
-    recentMarks: list[str],
+    recentMarks: list[tuple[str, str]],
     totalMarks: int,
     indicator: str = "",
     indicatorMs: int = 0,
 ):
     layout = Layout()
     layout.split_column(
-        Layout(name="status", size=14),
-        Layout(name="sample", size=18),
+        Layout(name="status", size=3),
+        Layout(name="metrics", size=4),
+        Layout(name="sample", size=8),
         Layout(name="marks", ratio=1),
+        Layout(name="hint", size=1),
     )
 
     # Status panel
     statusGrid = Table.grid(expand=True)
-    statusGrid.add_column(ratio=3)
-    statusGrid.add_column(ratio=2)
-    statusGrid.add_column(ratio=2)
+    statusGrid.add_column(justify="center")
+    statusGrid.add_column(justify="center")
+    statusGrid.add_column(justify="center")
 
-    metrics = Table(
-        box=box.SQUARE,
-        show_header=False,
-        pad_edge=True,
-        expand=True,
-        border_style="cyan",
-    )
-    metrics.add_column(justify="left")
-    metrics.add_column(justify="right")
-    metrics.add_row("Time", f"[cyan]{currentTime}[/cyan]")
-    metrics.add_row("Samples", f"[green]{samplesTaken}[/green]")
-    metrics.add_row("Since", f"[yellow]{timeSince}s[/yellow]")
-    metrics.add_row("Until", f"[yellow]{timeUntil}s[/yellow]")
-    metrics.add_row("AvgDur", f"[cyan]{avgDuration}ms[/cyan]")
-    metrics.add_row("", "")
-    metrics.add_row("Marks", f"[green]{totalMarks}[/green]")
+    if indicator:
+        statusSpinner = Spinner("dots", text=f"Sampling… {indicatorMs}ms", style="magenta")
+    else:
+        statusSpinner = Text("Idle", style="dim")
 
-    indicatorPanel = Panel(
-        Spinner("dots", text=f"{indicator} {indicatorMs}ms", style="magenta"),
-        border_style="magenta",
-        padding=(0, 1),
-    ) if indicator else Panel("", border_style="magenta")
+    vpnText = Text("VPN ON", style="green") if vpnStatus == "ON" else Text("VPN OFF", style="red")
 
-    vpnBox = Table(
-        box=box.SQUARE,
-        show_header=False,
-        pad_edge=True,
-        expand=True,
-        border_style="cyan",
-    )
-    vpnBox.add_column()
-    vpnBox.add_row(
-        "VPN: [green]ON[/green]" if vpnStatus == "ON" else "VPN: [red]OFF[/red]"
-    )
-    vpnBox.add_row(
-        "Boosted: [yellow]✅[/yellow]" if boosted else "Boosted: [red]❌[/red]"
-    )
     if boosted:
         remaining = int((boostEndTime - datetime.datetime.now()).total_seconds())
-        vpnBox.add_row("Ends in", f"[magenta]{remaining}s[/magenta]")
+        boostText = Text(f"Boosted {remaining}s", style="yellow")
+    else:
+        boostText = Text("Boosted off", style="dim")
 
-    statusGrid.add_row(
-        Panel(metrics, border_style="cyan", padding=(0, 1)),
-        indicatorPanel,
-        Panel(vpnBox, border_style="cyan", padding=(0, 1)),
-    )
+    statusGrid.add_row(statusSpinner, vpnText, boostText)
     layout["status"].update(
-        Panel(
-            statusGrid,
-            title="[bold cyan]Status Summary[/bold cyan]",
-            border_style="cyan",
-        )
+        Panel(statusGrid, title="[bold cyan]Status Summary[/bold cyan]", border_style="cyan")
+    )
+
+    # Metrics panel
+    metrics = Table.grid(expand=True)
+    for _ in range(3):
+        metrics.add_column(justify="left")
+        metrics.add_column(justify="right")
+    metrics.add_row(
+        "Time",
+        f"[cyan]{currentTime}[/cyan]",
+        "Samples",
+        f"[green]{samplesTaken}[/green]",
+        "Marks",
+        f"[green]{totalMarks}[/green]",
+    )
+    metrics.add_row(
+        "Since",
+        f"[yellow]{timeSince}s[/yellow]",
+        "Until",
+        f"[yellow]{timeUntil}s[/yellow]",
+        "AvgDur",
+        f"[cyan]{avgDuration}ms[/cyan]",
+    )
+    layout["metrics"].update(
+        Panel(metrics, title="[bold cyan]Metrics[/bold cyan]", border_style="cyan")
     )
 
     # Sample panel
-    sampleTable = Table(box=box.SQUARE, show_header=False, pad_edge=True, expand=True)
-    sampleTable.add_column(justify="left")
-    sampleTable.add_column(justify="right")
-    sampleTable.add_row("Start", f"[cyan]{sampleStart}[/cyan]")
-    sampleTable.add_row("End", f"[cyan]{sampleEnd}[/cyan]")
-    sampleTable.add_row("Dur", f"[green]{lastDuration}ms[/green]")
-    pingText = f"[cyan]{pingMs:.1f}[/cyan]" if pingMs > 0 else "[dim]—[/dim]"
-    sampleTable.add_row("Ping", pingText)
+    sampleTable = Table.grid(expand=True)
+    for _ in range(5):
+        sampleTable.add_column()
+
+    sampleTable.add_row(
+        f"Start: {sampleStart}",
+        f"End: {sampleEnd}",
+        f"Dur: {lastDuration}ms",
+        "",
+        "",
+    )
+
+    pingText = f"{pingMs:.1f}ms" if pingMs > 0 else "—"
     if packetLoss > 1:
         lossColor = "red"
     elif packetLoss > 0:
         lossColor = "yellow"
     else:
         lossColor = "green"
-    lossText = f"[{lossColor}]{packetLoss:.1f}[/{lossColor}]" if packetLoss > 0 else "[dim]0[/dim]"
-    sampleTable.add_row("Loss", lossText)
-    downText = f"[blue]{download:.1f} Mbps[/blue]" if download > 0 else "[dim]—[/dim]"
-    upText = f"[blue]{upload:.1f} Mbps[/blue]" if upload > 0 else "[dim]—[/dim]"
-    sampleTable.add_row("Down", downText)
-    sampleTable.add_row("Up", upText)
+    lossText = f"[{lossColor}]{packetLoss:.1f}%[/{lossColor}]"
+    downText = f"{download:.1f} Mbps" if download > 0 else "—"
+    upText = f"{upload:.1f} Mbps" if upload > 0 else "—"
     if wifiSignal is None:
-        wifiText = "[dim]—[/dim]"
-    elif wifiSignal > -60:
-        wifiText = f"[green]{wifiSignal} dBm[/green]"
-    elif wifiSignal > -75:
-        wifiText = f"[yellow]{wifiSignal} dBm[/yellow]"
+        wifiText = "—"
     else:
-        wifiText = f"[red]{wifiSignal} dBm[/red]"
-    sampleTable.add_row("Wi-Fi", wifiText)
-    failsGrid = Table.grid(padding=0)
-    if failedSites:
-        for site in failedSites:
-            failsGrid.add_row(Text(site, style="yellow", overflow="ellipsis"))
-    else:
-        failsGrid.add_row("[green]—[/green]")
-    sampleTable.add_row("Fail", failsGrid)
+        wifiText = f"{wifiSignal} dBm"
+
+    sampleTable.add_row(
+        f"Ping: {pingText}",
+        f"Loss: {lossText}",
+        f"Down: {downText}",
+        f"Up: {upText}",
+        f"Signal: {wifiText}",
+    )
+
+    fails = ", ".join(failedSites) if failedSites else "None"
+    sampleTable.add_row(f"Fails: {fails}", "", "", "", "")
 
     layout["sample"].update(
-        Panel(
-            sampleTable,
-            title="[bold green]Latest Sample[/bold green]",
-            border_style="green",
-        )
+        Panel(sampleTable, title="[bold green]Latest Sample[/bold green]", border_style="green")
     )
 
     # Marks panel
-    marksTable = Table(box=box.SQUARE, show_header=False, pad_edge=True, expand=True)
-    marksTable.add_column()
+    marksTable = Table(box=box.SQUARE, show_header=True, pad_edge=True, expand=True)
+    marksTable.add_column("Time")
+    marksTable.add_column("Note")
     if recentMarks:
-        for mark in recentMarks:
-            marksTable.add_row(f"[magenta]{mark}[/magenta]")
+        for ts, note in recentMarks:
+            marksTable.add_row(ts, note)
     else:
-        marksTable.add_row("[dim]No marks yet[/dim]")
+        marksTable.add_row("-", "No marks yet")
     overflow = totalMarks - len(recentMarks)
     if overflow > 0:
-        marksTable.add_row(f"[yellow]... ({overflow} more omitted)[/yellow]")
+        marksTable.add_row("", f"... ({overflow} more omitted)")
 
     layout["marks"].update(
         Panel(
@@ -259,6 +249,8 @@ def RenderDashboard(
             border_style="yellow",
         )
     )
+
+    layout["hint"].update(Text("Press 'm' to add mark, 'q' to quit", justify="center", style="dim"))
 
     return layout
 
@@ -424,11 +416,13 @@ def ManualMarkerLoop():
         tty.setcbreak(fd)
         while True:
             ch = sys.stdin.read(1)
+            if ch == "q":
+                sys.exit(0)
             if ch == "m":
                 nowDt = datetime.datetime.now()
                 ts = nowDt.strftime("%H:%M:%S")
                 boostEndTime = nowDt + BOOSTED_DURATION
-                marksDeque.append(ts)
+                marksDeque.append((ts, "Manual mark"))
                 totalMarksCount += 1
                 WriteToLog({"timestamp": nowDt.isoformat(), "marker": "MANUAL_MARK"})
                 console.print(f"[{ts}] Manual marker logged.")
