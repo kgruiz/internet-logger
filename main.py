@@ -128,6 +128,37 @@ def RenderDashboard(
     indicatorMs: int = 0,
 ):
     layout = Layout()
+
+    if samplesTaken == 0:
+        totalSamplesStr = str(samplesTaken)
+        totalMarksStr = str(totalMarks)
+        timeSinceStr = Text("-", justify="center")
+        timeUntilStr = Text("-", justify="center")
+        avgDurationStr = Text("-", justify="center")
+        sampleStartStr = Text("-", justify="center")
+        sampleEndStr = Text("-", justify="center")
+        lastDurationStr = Text("-", justify="center")
+        pingMsStr = Text("-", justify="center")
+        packetLossStr = Text("-", justify="center")
+        downloadStr = Text("-", justify="center")
+        uploadStr = Text("-", justify="center")
+        wifiSignalStr = Text("-", justify="center")
+        failedSitesStr = Text("-", justify="center")
+    else:
+        totalSamplesStr = str(samplesTaken)
+        totalMarksStr = str(totalMarks)
+        timeSinceStr = f"{timeSince}s"
+        timeUntilStr = f"{timeUntil}s"
+        avgDurationStr = f"{avgDuration}ms"
+        sampleStartStr = sampleStart
+        sampleEndStr = sampleEnd
+        lastDurationStr = f"{lastDuration}ms"
+        pingMsStr = f"{pingMs:.1f}"
+        packetLossStr = f"{packetLoss:.1f}"
+        downloadStr = f"{download:.1f}"
+        uploadStr = f"{upload:.1f}"
+        wifiSignalStr = f"{wifiSignal} dBm" if wifiSignal is not None else "-"
+        failedSitesStr = ", ".join(failedSites) or "-"
     layout.split_column(
         Layout(name="status", size=5),
         Layout(name="metrics", size=8),
@@ -138,7 +169,7 @@ def RenderDashboard(
 
     # Status panel
     statusGrid = Table(box=box.SQUARE, expand=True, show_header=False, show_lines=True)
-    statusGrid.add_column(justify="center")
+    statusGrid.add_column(justify="center", width=18)
     statusGrid.add_column(justify="center")
     statusGrid.add_column(justify="center")
 
@@ -181,17 +212,17 @@ def RenderDashboard(
         "Current Time",
         currentTime,
         "Total Samples",
-        str(samplesTaken),
+        totalSamplesStr,
         "Total Marks",
-        str(totalMarks),
+        totalMarksStr,
     )
     metrics.add_row(
         "Time Since Last",
-        f"{timeSince}s",
+        timeSinceStr,
         "Time Until Next",
-        f"{timeUntil}s",
+        timeUntilStr,
         "Average Duration",
-        f"{avgDuration}ms",
+        avgDurationStr,
     )
     layout["metrics"].update(
         Panel(metrics, title="[bold cyan] Metrics [/]", box=box.HEAVY)
@@ -209,27 +240,27 @@ def RenderDashboard(
     sampleGrid.add_column(justify="right", style="dim")
     sampleGrid.add_row(
         "Start Time",
-        sampleStart,
+        sampleStartStr,
         "End Time",
-        sampleEnd,
+        sampleEndStr,
         "Duration",
-        f"{lastDuration}ms",
+        lastDurationStr,
     )
     sampleGrid.add_row(
         "Ping (ms)",
-        f"{pingMs:.1f}",
+        pingMsStr,
         "Packet Loss (%)",
-        f"{packetLoss:.1f}",
+        packetLossStr,
         "Download (Mbps)",
-        f"{download:.1f}",
+        downloadStr,
     )
     sampleGrid.add_row(
         "Upload (Mbps)",
-        f"{upload:.1f}",
+        uploadStr,
         "Signal (dBm)",
-        f"{wifiSignal} dBm" if wifiSignal is not None else "—",
+        wifiSignalStr,
         "Failed Sites",
-        ", ".join(failedSites) or "None",
+        failedSitesStr,
     )
     layout["sample"].update(
         Panel(sampleGrid, title="[bold green] Latest Sample [/]", box=box.HEAVY)
