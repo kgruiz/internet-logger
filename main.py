@@ -140,7 +140,7 @@ def RenderDashboard(
     statusGrid.add_column(ratio=1)
 
     metrics = Table(
-        grid_style="cyan", box=box.SQUARE, show_header=False, pad_edge=False
+        box=box.SQUARE, show_header=False, pad_edge=False, border_style="cyan"
     )
     metrics.add_column(justify="left")
     metrics.add_column(justify="right")
@@ -152,17 +152,17 @@ def RenderDashboard(
     metrics.add_row("", "")
     metrics.add_row("Marks", f"[green]{totalMarks}[/green]")
 
-    vpnBox = Table(grid_style="cyan", box=box.SQUARE, show_header=False, pad_edge=False)
+    vpnBox = Table(box=box.SQUARE, show_header=False, pad_edge=False, border_style="cyan")
     vpnBox.add_column()
     vpnBox.add_row(
-        f"VPN: [green]ON[/green]" if vpnStatus == "ON" else "VPN: [red]OFF[/red]"
+        "VPN: [green]ON[/green]" if vpnStatus == "ON" else "VPN: [red]OFF[/red]"
     )
     vpnBox.add_row(
         "Boosted: [yellow]✅[/yellow]" if boosted else "Boosted: [red]❌[/red]"
     )
     if boosted:
         remaining = int((boostEndTime - datetime.datetime.now()).total_seconds())
-        vpnBox.add_row(f"Ends in", f"[magenta]{remaining}s[/magenta]")
+        vpnBox.add_row("Ends in", f"[magenta]{remaining}s[/magenta]")
     if indicator:
         vpnBox.add_row("")
         vpnBox.add_row(
