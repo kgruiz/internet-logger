@@ -8,8 +8,8 @@ import threading
 import time
 import tty
 from collections import deque
-from typing import Deque, Tuple
 from pathlib import Path
+from typing import Deque, Tuple
 
 import requests
 from rich import box
@@ -17,7 +17,6 @@ from rich.console import Console
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
-from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
@@ -130,167 +129,138 @@ def RenderDashboard(
 ):
     layout = Layout()
     layout.split_column(
-        Layout(name="status", size=3),
-        Layout(name="metrics", size=4),
-        Layout(name="sample", size=8),
-        Layout(name="marks", ratio=1),
+        Layout(name="status", size=5),
+        Layout(name="metrics", size=8),
+        Layout(name="sample", size=13),
+        Layout(name="marks", size=11),
         Layout(name="hint", size=1),
     )
 
     # Status panel
-    statusGrid = Table.grid(expand=True)
-    statusGrid.add_column(justify="center", no_wrap=True)
-    statusGrid.add_column(justify="center", no_wrap=True)
-    statusGrid.add_column(justify="center", no_wrap=True)
+    statusGrid = Table(box=box.SQUARE, expand=True, show_header=False, show_lines=True)
+    statusGrid.add_column(justify="center")
+    statusGrid.add_column(justify="center")
+    statusGrid.add_column(justify="center")
 
-    if indicator:
-        statusSpinner = Spinner(
-            "dots",
-            text=f"Sampling… {indicatorMs}ms",
-            style="magenta",
-        )
-    else:
-        statusSpinner = Text("Idle", style="dim")
+    statusText = (
+        Text(f"{indicator} {indicatorMs}ms", style="magenta")
+        if indicator
+        else Text("", style="")
+    )
+    vpnText = (
+        Text("VPN ON", style="green")
+        if vpnStatus == "ON"
+        else Text("VPN OFF", style="red")
+    )
+    boostText = (
+        Text(f"✅ Ends in {timeUntil}s", style="yellow")
+        if boosted
+        else Text("Boosted off", style="dim")
+    )
 
-    vpnText = Text("VPN ON", style="green") if vpnStatus == "ON" else Text("VPN OFF", style="red")
-
-    if boosted:
-        remaining = int((boostEndTime - datetime.datetime.now()).total_seconds())
-        boostText = Text(f"Boosted {remaining}s", style="yellow")
-    else:
-        boostText = Text("Boosted off", style="dim")
-
-    statusGrid.add_row(statusSpinner, vpnText, boostText)
+    statusGrid.add_row(statusText, vpnText, boostText)
     layout["status"].update(
         Panel(
             statusGrid,
-            title="[bold bright_white]Status Summary[/bold bright_white]",
-            border_style="bright_blue",
-            padding=(1, 1),
+            title="[bold yellow] Status Summary [/]",
+            box=box.HEAVY,
         )
     )
 
     # Metrics panel
     metrics = Table(
-        box=box.SIMPLE_HEAVY,
-        expand=True,
-        show_lines=True,
-        pad_edge=True,
+        box=box.SQUARE, expand=True, show_header=False, show_lines=True, padding=(0, 1)
     )
-    for _ in range(3):
-        metrics.add_column(justify="left", no_wrap=True)
-        metrics.add_column(justify="right", no_wrap=True)
+    metrics.add_column(justify="left", style="bold cyan")
+    metrics.add_column(justify="right", style="dim")
+    metrics.add_column(justify="left", style="bold cyan")
+    metrics.add_column(justify="right", style="dim")
+    metrics.add_column(justify="left", style="bold cyan")
+    metrics.add_column(justify="right", style="dim")
     metrics.add_row(
-        "Time",
-        f"[cyan]{currentTime}[/cyan]",
-        "Samples",
-        f"[green]{samplesTaken}[/green]",
-        "Marks",
-        f"[green]{totalMarks}[/green]",
+        "Current Time",
+        currentTime,
+        "Total Samples",
+        str(samplesTaken),
+        "Total Marks",
+        str(totalMarks),
     )
     metrics.add_row(
-        "Since",
-        f"[yellow]{timeSince}s[/yellow]",
-        "Until",
-        f"[yellow]{timeUntil}s[/yellow]",
-        "AvgDur",
-        f"[cyan]{avgDuration}ms[/cyan]",
+        "Time Since Last",
+        f"{timeSince}s",
+        "Time Until Next",
+        f"{timeUntil}s",
+        "Average Duration",
+        f"{avgDuration}ms",
     )
     layout["metrics"].update(
-        Panel(
-            metrics,
-            title="[bold bright_white]Metrics[/bold bright_white]",
-            border_style="bright_blue",
-            padding=(1, 1),
-        )
+        Panel(metrics, title="[bold cyan] Metrics [/]", box=box.HEAVY)
     )
 
-    # Sample panel
-    sampleTable = Table(
-        box=box.SIMPLE_HEAVY,
-        expand=True,
-        show_lines=True,
-        pad_edge=True,
+    # Latest Sample panel
+    sampleGrid = Table(
+        box=box.SQUARE, expand=True, show_header=False, show_lines=True, padding=(0, 1)
     )
-    for _ in range(5):
-        sampleTable.add_column(no_wrap=True)
-
-    sampleTable.add_row(
-        f"Start: {sampleStart}",
-        f"End: {sampleEnd}",
-        f"Dur: {lastDuration}ms",
-        "",
-        "",
+    sampleGrid.add_column(justify="left", style="bold green")
+    sampleGrid.add_column(justify="right", style="dim")
+    sampleGrid.add_column(justify="left", style="bold green")
+    sampleGrid.add_column(justify="right", style="dim")
+    sampleGrid.add_column(justify="left", style="bold green")
+    sampleGrid.add_column(justify="right", style="dim")
+    sampleGrid.add_row(
+        "Start Time",
+        sampleStart,
+        "End Time",
+        sampleEnd,
+        "Duration",
+        f"{lastDuration}ms",
     )
-
-    pingText = f"{pingMs:.1f}ms" if pingMs > 0 else "—"
-    if packetLoss > 1:
-        lossColor = "red"
-    elif packetLoss > 0:
-        lossColor = "yellow"
-    else:
-        lossColor = "green"
-    lossText = f"[{lossColor}]{packetLoss:.1f}%[/{lossColor}]"
-    downText = f"{download:.1f} Mbps" if download > 0 else "—"
-    upText = f"{upload:.1f} Mbps" if upload > 0 else "—"
-    if wifiSignal is None:
-        wifiText = "—"
-    else:
-        wifiText = f"{wifiSignal} dBm"
-
-    sampleTable.add_row(
-        f"Ping: {pingText}",
-        f"Loss: {lossText}",
-        f"Down: {downText}",
-        f"Up: {upText}",
-        f"Signal: {wifiText}",
+    sampleGrid.add_row(
+        "Ping (ms)",
+        f"{pingMs:.1f}",
+        "Packet Loss (%)",
+        f"{packetLoss:.1f}",
+        "Download (Mbps)",
+        f"{download:.1f}",
     )
-
-    fails = ", ".join(failedSites) if failedSites else "None"
-    sampleTable.add_row(f"Fails: {fails}", "", "", "", "")
-
+    sampleGrid.add_row(
+        "Upload (Mbps)",
+        f"{upload:.1f}",
+        "Signal (dBm)",
+        f"{wifiSignal} dBm" if wifiSignal is not None else "—",
+        "Failed Sites",
+        ", ".join(failedSites) or "None",
+    )
     layout["sample"].update(
-        Panel(
-            sampleTable,
-            title="[bold bright_white]Latest Sample[/bold bright_white]",
-            border_style="bright_blue",
-            padding=(1, 1),
-        )
+        Panel(sampleGrid, title="[bold green] Latest Sample [/]", box=box.HEAVY)
     )
 
     # Marks panel
     marksTable = Table(
-        box=box.SIMPLE_HEAVY,
         show_header=True,
-        pad_edge=True,
+        box=box.SQUARE,
         expand=True,
+        pad_edge=True,
         show_lines=True,
     )
-    marksTable.add_column("Time")
-    marksTable.add_column("Note")
+    marksTable.add_column("Time", no_wrap=True, width=10)
+    marksTable.add_column("Note", ratio=1)
     if recentMarks:
         for ts, note in recentMarks:
             marksTable.add_row(ts, note)
-        overflow = totalMarks - len(recentMarks)
-        if overflow > 0:
+        if len(recentMarks) < totalMarks:
+            overflow = totalMarks - len(recentMarks)
             marksTable.add_row("", f"... ({overflow} more omitted)")
-        marksPanel = Panel(
-            marksTable,
-            title="[bold bright_white]Recent Marks[/bold bright_white]",
-            border_style="bright_blue",
-            padding=(1, 1),
-        )
     else:
-        marksPanel = Panel(
-            Text("No marks yet", justify="center", style="dim"),
-            title="[bold bright_white]Recent Marks[/bold bright_white]",
-            border_style="bright_blue",
-            padding=(1, 1),
-        )
+        marksTable.add_row("", "[dim italic]No marks yet[/]")
+    layout["marks"].update(
+        Panel(marksTable, title="[bold magenta] Recent Marks [/]", box=box.HEAVY)
+    )
 
-    layout["marks"].update(marksPanel)
-
-    layout["hint"].update(Text("Press 'm' to add mark, 'q' to quit", justify="center", style="dim"))
+    # Hint line
+    layout["hint"].update(
+        Text("Press 'm' to add mark | 'q' to quit", justify="center", style="dim")
+    )
 
     return layout
 
@@ -298,50 +268,22 @@ def RenderDashboard(
 def RunTrackerLoop():
     global boostEndTime, sampleCount, lastSampleTime
 
-    with Live(console=console, refresh_per_second=4) as live:
-        # initial render
-        nowStr = datetime.datetime.now().strftime("%H:%M:%S")
-        live.update(
-            RenderDashboard(
-                vpnStatus="OFF",
-                boosted=False,
-                currentTime=nowStr,
-                samplesTaken=sampleCount,
-                timeSince=0,
-                timeUntil=NORMAL_INTERVAL_SEC,
-                avgDuration=0,
-                sampleStart=nowStr,
-                sampleEnd=nowStr,
-                lastDuration=0,
-                pingMs=0.0,
-                packetLoss=0.0,
-                download=0.0,
-                upload=0.0,
-                wifiSignal=None,
-                failedSites=[],
-                recentMarks=list(marksDeque),
-                totalMarks=totalMarksCount,
-                indicator="Initializing…",
-                indicatorMs=0,
-            )
-        )
-
-        # sampling loop
+    with Live(console=console, refresh_per_second=4, screen=True) as live:
         while True:
             startTime = time.perf_counter()
             startDt = datetime.datetime.now()
 
+            # Sampling indicator thread
             stopEvent = threading.Event()
 
-            def _indicator_loop():
+            def indicator_loop():
                 while not stopEvent.is_set():
-                    nowDt = datetime.datetime.now()
                     elapsedMs = int((time.perf_counter() - startTime) * 1000)
                     live.update(
                         RenderDashboard(
                             vpnStatus=CheckVpnStatus(),
-                            boosted=(nowDt < boostEndTime),
-                            currentTime=nowDt.strftime("%H:%M:%S"),
+                            boosted=(datetime.datetime.now() < boostEndTime),
+                            currentTime=datetime.datetime.now().strftime("%H:%M:%S"),
                             samplesTaken=sampleCount,
                             timeSince=int(
                                 (startDt - (lastSampleTime or startDt)).total_seconds()
@@ -369,19 +311,19 @@ def RunTrackerLoop():
                     )
                     time.sleep(0.1)
 
-            indicatorThread = threading.Thread(target=_indicator_loop, daemon=True)
+            indicatorThread = threading.Thread(target=indicator_loop, daemon=True)
             indicatorThread.start()
 
-            # perform measurements
+            # Perform tests
             vpn = CheckVpnStatus()
             pingMs, packetLoss = PingTest()
             download, upload = SpeedTest()
             wifi = GetWifiSignal()
-            failed = TestUrls(extra=False)
+            failed = TestUrls()
 
+            # Stop indicator and record results
             stopEvent.set()
             indicatorThread.join()
-
             endDt = datetime.datetime.now()
             durMs = int((time.perf_counter() - startTime) * 1000)
             durationList.append(durMs)
@@ -389,20 +331,22 @@ def RunTrackerLoop():
             lastSampleTime = startDt
             avgMs = int(sum(durationList) / len(durationList))
 
-            entry = {
-                "timestamp": startDt.isoformat(),
-                "vpn_status": vpn,
-                "ping_ms": pingMs,
-                "packet_loss": packetLoss,
-                "download_mbps": download,
-                "upload_mbps": upload,
-                "wifi_signal_dbm": wifi,
-                "failed_sites": failed,
-            }
-            WriteToLog(entry)
+            # Write log entry
+            WriteToLog(
+                {
+                    "timestamp": startDt.isoformat(),
+                    "vpn_status": vpn,
+                    "ping_ms": pingMs,
+                    "packet_loss": packetLoss,
+                    "download_mbps": download,
+                    "upload_mbps": upload,
+                    "wifi_signal_dbm": wifi,
+                    "failed_sites": failed,
+                }
+            )
 
-            # countdown until next
-            nextInterval = (
+            # Countdown until next sample
+            interval = (
                 BOOSTED_INTERVAL_SEC
                 if datetime.datetime.now() < boostEndTime
                 else NORMAL_INTERVAL_SEC
@@ -412,19 +356,16 @@ def RunTrackerLoop():
                 sinceSec = int((nowDt - lastSampleTime).total_seconds())
                 untilSec = int(
                     (
-                        lastSampleTime
-                        + datetime.timedelta(seconds=nextInterval)
-                        - nowDt
+                        lastSampleTime + datetime.timedelta(seconds=interval) - nowDt
                     ).total_seconds()
                 )
                 if untilSec <= 0:
                     break
-                nowStr = nowDt.strftime("%H:%M:%S")
                 live.update(
                     RenderDashboard(
                         vpnStatus=vpn,
                         boosted=(nowDt < boostEndTime),
-                        currentTime=nowStr,
+                        currentTime=nowDt.strftime("%H:%M:%S"),
                         samplesTaken=sampleCount,
                         timeSince=sinceSec,
                         timeUntil=untilSec,
@@ -440,8 +381,6 @@ def RunTrackerLoop():
                         failedSites=failed,
                         recentMarks=list(marksDeque),
                         totalMarks=totalMarksCount,
-                        indicator="",
-                        indicatorMs=0,
                     )
                 )
                 time.sleep(1)
