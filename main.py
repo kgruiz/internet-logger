@@ -13,15 +13,15 @@ import requests
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
-from rich.spinner import Spinner
 from rich.table import Table
+from rich.spinner import Spinner
 
 VERBOSE = "--verbose" in sys.argv
 
 LOG_FILE = Path("netlog.jsonl")
 sampleCount = 0
 lastSampleTime = None
-NORMAL_INTERVAL = 60
+NORMAL_INTERVAL_SEC = 60
 BOOSTED_INTERVAL = 15
 BOOSTED_DURATION = datetime.timedelta(minutes=5)
 
@@ -82,7 +82,7 @@ def GetWifiSignal():
         )
         match = re.search(r"agrCtlRSSI: (-\d+)", proc.stdout)
         return int(match.group(1)) if match else None
-    except:
+    except Exception:
         return None
 
 
@@ -110,17 +110,75 @@ def TestUrls(extra: bool = False):
             resp = requests.get(url, timeout=5)
             if resp.status_code >= 400:
                 failed.append(url)
-        except:
+        except Exception:
             failed.append(url)
     return failed
 
 
 def WriteToLog(entry):
-    """
-    Append a JSON line to the log file.
-    """
-    with LOG_FILE.open("a") as f:
-        f.write(json.dumps(entry, indent=4) + "\n")
+    """Append a JSON record to the log file."""
+    with LOG_FILE.open("a") as logFile:
+        json.dump(entry, logFile, indent=4)
+        logFile.write("\n")
+
+
+def BuildTable(
+    vpnStatus=None,
+    pingMs=None,
+    packetLoss=None,
+    download=None,
+    upload=None,
+    wifiSignal=None,
+    fails=None,
+    sinceLast=0,
+    nextIn=0,
+):
+    table = Table(show_header=False, pad_edge=False)
+    table.add_column(style="white", justify="left")
+    table.add_column(justify="right")
+
+    table.add_row("Time", datetime.datetime.now().strftime("%H:%M:%S"))
+    if vpnStatus is None:
+        table.add_row("VPN", "N/A")
+    else:
+        vpnStr = "[green]ON[/green]" if vpnStatus == "ON" else "[red]OFF[/red]"
+        table.add_row("VPN", vpnStr)
+
+    pingStr = "N/A" if pingMs is None else f"[cyan]{pingMs:.1f}[/cyan]"
+    table.add_row("Ping (ms)", pingStr)
+
+    lossStr = "N/A" if packetLoss is None else f"[yellow]{packetLoss:.1f}[/yellow]"
+    table.add_row("Loss (%)", lossStr)
+
+    downStr = "N/A" if download is None else f"[blue]{download:.1f} Mbps[/blue]"
+    table.add_row("Down", downStr)
+
+    upStr = "N/A" if upload is None else f"[blue]{upload:.1f} Mbps[/blue]"
+    table.add_row("Up", upStr)
+
+    if wifiSignal is None:
+        wifiStr = "N/A"
+    elif wifiSignal > -60:
+        wifiStr = f"[green]{wifiSignal} dBm[/green]"
+    elif wifiSignal > -75:
+        wifiStr = f"[yellow]{wifiSignal} dBm[/yellow]"
+    else:
+        wifiStr = f"[red]{wifiSignal} dBm[/red]"
+    table.add_row("Wi-Fi:", wifiStr)
+
+    failsGrid = Table.grid(padding=0)
+    if fails:
+        for url in fails:
+            failsGrid.add_row(f"[red]{url.replace('https://', '')}[/red]")
+    else:
+        failsGrid.add_row("[green]None[/green]")
+    table.add_row("Fails", failsGrid)
+
+    table.add_row("Samples taken", f"[green]{sampleCount}[/green]")
+    table.add_row("Since last", f"{sinceLast}s")
+    table.add_row("Next in", f"{nextIn}s")
+
+    return table
 
 
 def RunTrackerLoop():
@@ -129,30 +187,36 @@ def RunTrackerLoop():
     global sampleCount
     global lastSampleTime
 
-    placeholder = Table.grid(padding=(0, 1))
-    placeholder.add_column(justify="center")
-    placeholder.add_row("[bold cyan]Initializing network diagnostics...[/bold cyan]")
-    placeholder.add_row("[dim]Waiting for first data sample[/dim]")
-    placeholder.add_row("[blue]⌛ Please wait...[/blue]")
-
     with Live(
-        Panel(placeholder, title="Internet Status Monitor"),
+        Panel(Spinner("dots"), title="Internet Status Monitor"),
         console=console,
         refresh_per_second=4,
     ) as live:
+        table = BuildTable()
+        live.update(Panel(table, title="Internet Status Monitor"))
+        nextSampleTime = datetime.datetime.now()
+
         while True:
+            live.update(
+                Panel(
+                    Spinner("dots", text="Collecting sample..."),
+                    title="Internet Status Monitor",
+                )
+            )
+
             now = datetime.datetime.now()
-            elapsedStr = (
-                "–" if not lastSampleTime else f"{(now - lastSampleTime).seconds}s"
+            timeSinceLast = 0 if lastSampleTime is None else int(
+                (now - lastSampleTime).total_seconds()
             )
             lastSampleTime = now
             nowIso = now.isoformat()
+
             vpnStatus = CheckVpnStatus()
             pingMs, packetLoss = PingTest()
             download, upload = SpeedTest()
             wifiSignal = GetWifiSignal()
-            interval = BOOSTED_INTERVAL if now < boostEnd else NORMAL_INTERVAL
-            failedSites = TestUrls(extra=(interval == NORMAL_INTERVAL))
+            interval = BOOSTED_INTERVAL if now < boostEnd else NORMAL_INTERVAL_SEC
+            failedSites = TestUrls(extra=(interval == NORMAL_INTERVAL_SEC))
 
             entry = {
                 "timestamp": nowIso,
@@ -169,45 +233,43 @@ def RunTrackerLoop():
             if VERBOSE:
                 console.print(entry)
 
-            table = Table.grid(expand=True)
-            table.add_column(justify="right", style="bold magenta", ratio=1)
-            table.add_column(justify="left", style="bold", ratio=3)
-            table.add_row("Time", f"[white]{now.strftime('%H:%M:%S')}[/white]")
-            vpnStr = "[green]ON[/green]" if vpnStatus == "ON" else "[red]OFF[/red]"
-            table.add_row("VPN", vpnStr)
-            table.add_row("Ping (ms)", f"[cyan]{pingMs:.1f}[/cyan]")
-            table.add_row("Loss (%)", f"[yellow]{packetLoss:.1f}[/yellow]")
-            table.add_row("Down", f"[blue]{download:.1f} Mbps[/blue]")
-            table.add_row("Up", f"[blue]{upload:.1f} Mbps[/blue]")
+            nextSampleTime = now + datetime.timedelta(seconds=interval)
+            table = BuildTable(
+                vpnStatus,
+                pingMs,
+                packetLoss,
+                download,
+                upload,
+                wifiSignal,
+                failedSites,
+                timeSinceLast,
+                int((nextSampleTime - now).total_seconds()),
+            )
 
-            if wifiSignal is None:
-                signalStr = "N/A"
-            elif wifiSignal > -60:
-                signalStr = f"[green]{wifiSignal} dBm[/green]"
-            elif wifiSignal > -75:
-                signalStr = f"[yellow]{wifiSignal} dBm[/yellow]"
-            else:
-                signalStr = f"[red]{wifiSignal} dBm[/red]"
-            table.add_row("Wi-Fi", signalStr)
-
-            if failedSites:
-                failsFormatted = "\n".join(
-                    f"[red]- {url.replace('https://', '')}[/red]" for url in failedSites
+            while True:
+                now = datetime.datetime.now()
+                timeUntilNext = int((nextSampleTime - now).total_seconds())
+                if timeUntilNext < 0:
+                    break
+                table = BuildTable(
+                    vpnStatus,
+                    pingMs,
+                    packetLoss,
+                    download,
+                    upload,
+                    wifiSignal,
+                    failedSites,
+                    int((now - lastSampleTime).total_seconds()),
+                    timeUntilNext,
                 )
-            else:
-                failsFormatted = "[green]None[/green]"
-            table.add_row("Fails", failsFormatted)
-
-            countdown = interval
-            while countdown:
-                title = (
-                    f"[b bright_white]Internet Status Monitor[/b bright_white]  "
-                    f"[dim](next in {countdown}s, +{elapsedStr})[/dim]  "
-                    f"[green]#{sampleCount}[/green]"
+                live.update(
+                    Panel(
+                        table,
+                        title="Internet Status Monitor",
+                        subtitle=f"(next in {timeUntilNext}s)",
+                    )
                 )
-                live.update(Panel(table, title=title))
                 time.sleep(1)
-                countdown -= 1
 
 
 def ManualMarkerLoop():
@@ -233,10 +295,10 @@ def ManualMarkerLoop():
         termios.tcsetattr(fd, termios.TCSADRAIN, origSettings)
 
 
-def main():
+def Main():
     threading.Thread(target=ManualMarkerLoop, daemon=True).start()
     RunTrackerLoop()
 
 
 if __name__ == "__main__":
-    main()
+    Main()
