@@ -139,12 +139,16 @@ def RenderDashboard(
 
     # Status panel
     statusGrid = Table.grid(expand=True)
-    statusGrid.add_column(justify="center")
-    statusGrid.add_column(justify="center")
-    statusGrid.add_column(justify="center")
+    statusGrid.add_column(justify="center", no_wrap=True)
+    statusGrid.add_column(justify="center", no_wrap=True)
+    statusGrid.add_column(justify="center", no_wrap=True)
 
     if indicator:
-        statusSpinner = Spinner("dots", text=f"Sampling… {indicatorMs}ms", style="magenta")
+        statusSpinner = Spinner(
+            "dots",
+            text=f"Sampling… {indicatorMs}ms",
+            style="magenta",
+        )
     else:
         statusSpinner = Text("Idle", style="dim")
 
@@ -158,14 +162,24 @@ def RenderDashboard(
 
     statusGrid.add_row(statusSpinner, vpnText, boostText)
     layout["status"].update(
-        Panel(statusGrid, title="[bold cyan]Status Summary[/bold cyan]", border_style="cyan")
+        Panel(
+            statusGrid,
+            title="[bold bright_white]Status Summary[/bold bright_white]",
+            border_style="bright_blue",
+            padding=(1, 1),
+        )
     )
 
     # Metrics panel
-    metrics = Table.grid(expand=True)
+    metrics = Table(
+        box=box.SIMPLE_HEAVY,
+        expand=True,
+        show_lines=True,
+        pad_edge=True,
+    )
     for _ in range(3):
-        metrics.add_column(justify="left")
-        metrics.add_column(justify="right")
+        metrics.add_column(justify="left", no_wrap=True)
+        metrics.add_column(justify="right", no_wrap=True)
     metrics.add_row(
         "Time",
         f"[cyan]{currentTime}[/cyan]",
@@ -183,13 +197,23 @@ def RenderDashboard(
         f"[cyan]{avgDuration}ms[/cyan]",
     )
     layout["metrics"].update(
-        Panel(metrics, title="[bold cyan]Metrics[/bold cyan]", border_style="cyan")
+        Panel(
+            metrics,
+            title="[bold bright_white]Metrics[/bold bright_white]",
+            border_style="bright_blue",
+            padding=(1, 1),
+        )
     )
 
     # Sample panel
-    sampleTable = Table.grid(expand=True)
+    sampleTable = Table(
+        box=box.SIMPLE_HEAVY,
+        expand=True,
+        show_lines=True,
+        pad_edge=True,
+    )
     for _ in range(5):
-        sampleTable.add_column()
+        sampleTable.add_column(no_wrap=True)
 
     sampleTable.add_row(
         f"Start: {sampleStart}",
@@ -226,29 +250,45 @@ def RenderDashboard(
     sampleTable.add_row(f"Fails: {fails}", "", "", "", "")
 
     layout["sample"].update(
-        Panel(sampleTable, title="[bold green]Latest Sample[/bold green]", border_style="green")
+        Panel(
+            sampleTable,
+            title="[bold bright_white]Latest Sample[/bold bright_white]",
+            border_style="bright_blue",
+            padding=(1, 1),
+        )
     )
 
     # Marks panel
-    marksTable = Table(box=box.SQUARE, show_header=True, pad_edge=True, expand=True)
+    marksTable = Table(
+        box=box.SIMPLE_HEAVY,
+        show_header=True,
+        pad_edge=True,
+        expand=True,
+        show_lines=True,
+    )
     marksTable.add_column("Time")
     marksTable.add_column("Note")
     if recentMarks:
         for ts, note in recentMarks:
             marksTable.add_row(ts, note)
-    else:
-        marksTable.add_row("-", "No marks yet")
-    overflow = totalMarks - len(recentMarks)
-    if overflow > 0:
-        marksTable.add_row("", f"... ({overflow} more omitted)")
-
-    layout["marks"].update(
-        Panel(
+        overflow = totalMarks - len(recentMarks)
+        if overflow > 0:
+            marksTable.add_row("", f"... ({overflow} more omitted)")
+        marksPanel = Panel(
             marksTable,
-            title="[bold yellow]Recent Marks[/bold yellow]",
-            border_style="yellow",
+            title="[bold bright_white]Recent Marks[/bold bright_white]",
+            border_style="bright_blue",
+            padding=(1, 1),
         )
-    )
+    else:
+        marksPanel = Panel(
+            Text("No marks yet", justify="center", style="dim"),
+            title="[bold bright_white]Recent Marks[/bold bright_white]",
+            border_style="bright_blue",
+            padding=(1, 1),
+        )
+
+    layout["marks"].update(marksPanel)
 
     layout["hint"].update(Text("Press 'm' to add mark, 'q' to quit", justify="center", style="dim"))
 
