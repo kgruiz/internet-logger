@@ -300,6 +300,18 @@ def RunTrackerLoop():
     global boostEndTime, sampleCount, lastSampleTime
 
     with Live(console=console, refresh_per_second=4, screen=True) as live:
+        # Preserve the data of the last completed sample for display during sampling
+        lastSampleData = {
+            "sampleStart": "",
+            "sampleEnd": "",
+            "lastDuration": 0,
+            "pingMs": 0.0,
+            "packetLoss": 0.0,
+            "download": 0.0,
+            "upload": 0.0,
+            "wifiSignal": None,
+            "failedSites": [],
+        }
         while True:
             startTime = time.perf_counter()
             startDt = datetime.datetime.now()
@@ -325,15 +337,15 @@ def RunTrackerLoop():
                                 if durationList
                                 else 0
                             ),
-                            sampleStart=startDt.strftime("%H:%M:%S"),
-                            sampleEnd=startDt.strftime("%H:%M:%S"),
-                            lastDuration=0,
-                            pingMs=0.0,
-                            packetLoss=0.0,
-                            download=0.0,
-                            upload=0.0,
-                            wifiSignal=None,
-                            failedSites=[],
+                            sampleStart=lastSampleData["sampleStart"],
+                            sampleEnd=lastSampleData["sampleEnd"],
+                            lastDuration=lastSampleData["lastDuration"],
+                            pingMs=lastSampleData["pingMs"],
+                            packetLoss=lastSampleData["packetLoss"],
+                            download=lastSampleData["download"],
+                            upload=lastSampleData["upload"],
+                            wifiSignal=lastSampleData["wifiSignal"],
+                            failedSites=lastSampleData["failedSites"],
                             recentMarks=list(marksDeque),
                             totalMarks=totalMarksCount,
                             indicator="Sampling…",
@@ -357,6 +369,18 @@ def RunTrackerLoop():
             indicatorThread.join()
             endDt = datetime.datetime.now()
             durMs = int((time.perf_counter() - startTime) * 1000)
+            # Update lastSampleData with the current sample's results
+            lastSampleData = {
+                "sampleStart": startDt.strftime("%H:%M:%S"),
+                "sampleEnd": endDt.strftime("%H:%M:%S"),
+                "lastDuration": durMs,
+                "pingMs": pingMs,
+                "packetLoss": packetLoss,
+                "download": download,
+                "upload": upload,
+                "wifiSignal": wifi,
+                "failedSites": failed,
+            }
             durationList.append(durMs)
             sampleCount += 1
             lastSampleTime = startDt
@@ -376,6 +400,30 @@ def RunTrackerLoop():
                 }
             )
 
+            # Show final results before countdown
+            live.update(
+                RenderDashboard(
+                    vpnStatus=vpn,
+                    boosted=(datetime.datetime.now() < boostEndTime),
+                    currentTime=endDt.strftime("%H:%M:%S"),
+                    samplesTaken=sampleCount,
+                    timeSince=int((endDt - lastSampleTime).total_seconds()),
+                    timeUntil=0,
+                    avgDuration=avgMs,
+                    sampleStart=startDt.strftime("%H:%M:%S"),
+                    sampleEnd=endDt.strftime("%H:%M:%S"),
+                    lastDuration=durMs,
+                    pingMs=pingMs,
+                    packetLoss=packetLoss,
+                    download=download,
+                    upload=upload,
+                    wifiSignal=wifi,
+                    failedSites=failed,
+                    recentMarks=list(marksDeque),
+                    totalMarks=totalMarksCount,
+                )
+            )
+
             # Countdown until next sample
             interval = (
                 BOOSTED_INTERVAL_SEC
@@ -390,7 +438,7 @@ def RunTrackerLoop():
                         lastSampleTime + datetime.timedelta(seconds=interval) - nowDt
                     ).total_seconds()
                 )
-                if untilSec <= 0:
+                if untilSec < 0:
                     break
                 live.update(
                     RenderDashboard(
